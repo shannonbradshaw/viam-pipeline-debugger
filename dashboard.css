@@ -1,0 +1,777 @@
+/**
+ * Viam Pipeline Debugger - Styles
+ * Dark theme optimized for debugging
+ */
+
+/* ============================================================================
+   CSS Variables
+   ============================================================================ */
+
+.vpd-dashboard {
+  --vpd-bg-0: #08080c;
+  --vpd-bg-1: #0e0e14;
+  --vpd-bg-2: #16161f;
+  --vpd-bg-3: #1e1e2a;
+  --vpd-bg-4: #262636;
+  
+  --vpd-text: #e8e8ec;
+  --vpd-text-muted: #8888a0;
+  --vpd-text-dim: #555566;
+  
+  --vpd-accent: #00d4aa;
+  --vpd-accent-dim: #00a080;
+  --vpd-accent-glow: rgba(0, 212, 170, 0.15);
+  
+  --vpd-success: #22c55e;
+  --vpd-warning: #f59e0b;
+  --vpd-error: #ef4444;
+  --vpd-info: #3b82f6;
+  
+  --vpd-border: #2a2a3a;
+  --vpd-border-light: #3a3a4a;
+  
+  --vpd-font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  --vpd-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  
+  --vpd-radius: 6px;
+  --vpd-radius-lg: 10px;
+}
+
+.vpd-theme-light {
+  --vpd-bg-0: #f8f9fa;
+  --vpd-bg-1: #ffffff;
+  --vpd-bg-2: #f1f3f4;
+  --vpd-bg-3: #e8eaed;
+  --vpd-bg-4: #dadce0;
+  
+  --vpd-text: #202124;
+  --vpd-text-muted: #5f6368;
+  --vpd-text-dim: #9aa0a6;
+  
+  --vpd-accent: #00897b;
+  --vpd-accent-dim: #00695c;
+  --vpd-accent-glow: rgba(0, 137, 123, 0.1);
+  
+  --vpd-border: #dadce0;
+  --vpd-border-light: #e8eaed;
+}
+
+/* ============================================================================
+   Base Layout
+   ============================================================================ */
+
+.vpd-dashboard {
+  min-height: 100vh;
+  background: var(--vpd-bg-0);
+  color: var(--vpd-text);
+  font-family: var(--vpd-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 20px;
+}
+
+.vpd-dashboard * {
+  box-sizing: border-box;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.vpd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vpd-border);
+}
+
+.vpd-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vpd-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vpd-header h1::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--vpd-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--vpd-accent);
+}
+
+.vpd-controls {
+  display: flex;
+  gap: 8px;
+}
+
+/* ============================================================================
+   Buttons
+   ============================================================================ */
+
+.vpd-dashboard button {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--vpd-font-sans);
+  color: var(--vpd-text);
+  background: var(--vpd-bg-3);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vpd-dashboard button:hover:not(:disabled) {
+  background: var(--vpd-bg-4);
+  border-color: var(--vpd-border-light);
+}
+
+.vpd-dashboard button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vpd-dashboard button.vpd-active {
+  background: var(--vpd-accent);
+  border-color: var(--vpd-accent);
+  color: var(--vpd-bg-0);
+}
+
+.vpd-dashboard button.vpd-disconnect {
+  background: var(--vpd-error);
+  border-color: var(--vpd-error);
+  color: white;
+}
+
+.vpd-refresh-btn {
+  padding: 4px 8px !important;
+  font-size: 14px !important;
+  line-height: 1;
+}
+
+.vpd-remove {
+  padding: 2px 6px !important;
+  font-size: 12px !important;
+  color: var(--vpd-error) !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.vpd-remove:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* ============================================================================
+   Inputs
+   ============================================================================ */
+
+.vpd-dashboard input[type="text"],
+.vpd-dashboard input[type="password"],
+.vpd-dashboard select {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--vpd-font-mono);
+  color: var(--vpd-text);
+  background: var(--vpd-bg-1);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.vpd-dashboard input:focus,
+.vpd-dashboard select:focus {
+  border-color: var(--vpd-accent);
+  box-shadow: 0 0 0 3px var(--vpd-accent-glow);
+}
+
+.vpd-dashboard input::placeholder {
+  color: var(--vpd-text-dim);
+}
+
+.vpd-dashboard input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--vpd-accent);
+}
+
+.vpd-dashboard input[type="range"] {
+  width: 100px;
+  accent-color: var(--vpd-accent);
+}
+
+/* ============================================================================
+   Connection Panel
+   ============================================================================ */
+
+.vpd-connection-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--vpd-bg-1);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius-lg);
+  margin-bottom: 20px;
+}
+
+.vpd-connection-panel input {
+  min-width: 200px;
+}
+
+.vpd-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+  margin-left: auto;
+}
+
+.vpd-status-connected {
+  color: var(--vpd-success);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.vpd-status-disconnected {
+  color: var(--vpd-text-muted);
+  background: var(--vpd-bg-2);
+}
+
+.vpd-status-connecting {
+  color: var(--vpd-warning);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.vpd-status-error {
+  color: var(--vpd-error);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ============================================================================
+   Config Section
+   ============================================================================ */
+
+.vpd-config-section {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .vpd-config-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+.vpd-pipeline-config {
+  background: var(--vpd-bg-1);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius-lg);
+  padding: 16px;
+}
+
+.vpd-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.vpd-config-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vpd-text);
+  margin: 0;
+}
+
+.vpd-add-pipeline {
+  display: flex;
+  gap: 8px;
+}
+
+.vpd-add-pipeline input {
+  width: 180px;
+}
+
+/* Pipeline Items */
+.vpd-pipeline-item {
+  background: var(--vpd-bg-2);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.vpd-pipeline-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.vpd-pipeline-header:hover {
+  background: var(--vpd-bg-3);
+}
+
+.vpd-pipeline-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.vpd-stage-count {
+  font-size: 12px;
+  color: var(--vpd-text-muted);
+}
+
+.vpd-pipeline-stages {
+  padding: 12px;
+  background: var(--vpd-bg-1);
+  border-top: 1px solid var(--vpd-border);
+}
+
+.vpd-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--vpd-bg-2);
+  border-radius: var(--vpd-radius);
+  margin-bottom: 6px;
+  font-family: var(--vpd-font-mono);
+  font-size: 12px;
+}
+
+.vpd-stage-index {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vpd-accent);
+  color: var(--vpd-bg-0);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.vpd-stage-name {
+  flex: 1;
+  color: var(--vpd-text);
+}
+
+.vpd-stage-source {
+  color: var(--vpd-text-dim);
+  font-size: 11px;
+}
+
+.vpd-add-stage {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vpd-add-stage select {
+  flex: 1;
+}
+
+/* Point Cloud Options */
+.vpd-pc-options {
+  background: var(--vpd-bg-1);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius-lg);
+  padding: 16px;
+}
+
+.vpd-pc-options h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.vpd-pc-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--vpd-text);
+  cursor: pointer;
+}
+
+/* ============================================================================
+   Pipelines Grid
+   ============================================================================ */
+
+.vpd-pipelines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 20px;
+}
+
+.vpd-pipeline-panel {
+  background: var(--vpd-bg-1);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius-lg);
+  overflow: hidden;
+}
+
+.vpd-pipeline-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--vpd-bg-2);
+  border-bottom: 1px solid var(--vpd-border);
+}
+
+.vpd-pipeline-title h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.vpd-stages {
+  padding: 16px;
+}
+
+/* ============================================================================
+   Stage Panel
+   ============================================================================ */
+
+.vpd-stage-panel {
+  background: var(--vpd-bg-2);
+  border: 1px solid var(--vpd-border);
+  border-radius: var(--vpd-radius);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.vpd-stage-panel.vpd-success {
+  border-left: 3px solid var(--vpd-success);
+}
+
+.vpd-stage-panel.vpd-error {
+  border-left: 3px solid var(--vpd-error);
+}
+
+.vpd-stage-panel.vpd-pending {
+  border-left: 3px solid var(--vpd-text-dim);
+}
+
+.vpd-stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--vpd-bg-3);
+  border-bottom: 1px solid var(--vpd-border);
+}
+
+.vpd-stage-header h4 {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--vpd-font-mono);
+  margin: 0;
+  color: var(--vpd-text);
+}
+
+.vpd-stage-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vpd-resource-type {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: var(--vpd-bg-4);
+  border-radius: 3px;
+  color: var(--vpd-text-muted);
+}
+
+.vpd-latency {
+  font-size: 11px;
+  font-family: var(--vpd-font-mono);
+  color: var(--vpd-accent);
+}
+
+.vpd-stage-content {
+  padding: 12px;
+  min-height: 100px;
+}
+
+.vpd-stage-source {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--vpd-text-dim);
+  background: var(--vpd-bg-1);
+  border-top: 1px solid var(--vpd-border);
+  font-family: var(--vpd-font-mono);
+}
+
+.vpd-flow-arrow {
+  text-align: center;
+  font-size: 18px;
+  color: var(--vpd-text-dim);
+  padding: 8px 0;
+}
+
+/* ============================================================================
+   Image Viewer
+   ============================================================================ */
+
+.vpd-image-viewer {
+  position: relative;
+  background: var(--vpd-bg-0);
+  border-radius: var(--vpd-radius);
+  overflow: hidden;
+}
+
+.vpd-image-viewer canvas {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.vpd-image-info {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  font-size: 10px;
+  font-family: var(--vpd-font-mono);
+  color: var(--vpd-text);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* ============================================================================
+   Point Cloud Viewer
+   ============================================================================ */
+
+.vpd-pointcloud-viewer {
+  position: relative;
+  background: var(--vpd-bg-0);
+  border-radius: var(--vpd-radius);
+  overflow: hidden;
+}
+
+.vpd-pointcloud-viewer canvas {
+  display: block;
+  width: 100%;
+  height: 240px;
+}
+
+.vpd-pc-info {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  font-family: var(--vpd-font-mono);
+}
+
+.vpd-pc-info span {
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--vpd-text);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.vpd-pc-controls {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  gap: 10px;
+  font-size: 9px;
+  color: var(--vpd-text-dim);
+}
+
+/* ============================================================================
+   Detection List
+   ============================================================================ */
+
+.vpd-detection-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.vpd-detection-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto;
+  gap: 4px 10px;
+  padding: 8px;
+  background: var(--vpd-bg-1);
+  border-radius: var(--vpd-radius);
+  margin-bottom: 6px;
+  font-family: var(--vpd-font-mono);
+  font-size: 12px;
+}
+
+.vpd-detection-item.vpd-low-confidence {
+  opacity: 0.6;
+}
+
+.vpd-det-class {
+  font-weight: 500;
+  color: var(--vpd-text);
+}
+
+.vpd-det-confidence {
+  color: var(--vpd-accent);
+  text-align: right;
+}
+
+.vpd-confidence-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: var(--vpd-bg-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.vpd-confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--vpd-accent-dim), var(--vpd-accent));
+  transition: width 0.3s ease;
+}
+
+.vpd-det-bbox {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--vpd-text-dim);
+}
+
+/* ============================================================================
+   Objects List (3D Segmentation)
+   ============================================================================ */
+
+.vpd-objects-list {
+  margin-top: 10px;
+}
+
+.vpd-objects-list h5 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vpd-text-muted);
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vpd-object-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--vpd-bg-1);
+  border-radius: var(--vpd-radius);
+  margin-bottom: 4px;
+  font-family: var(--vpd-font-mono);
+  font-size: 11px;
+}
+
+/* ============================================================================
+   Error & Empty States
+   ============================================================================ */
+
+.vpd-error-message {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--vpd-error);
+  border-radius: var(--vpd-radius);
+  color: var(--vpd-error);
+  font-size: 12px;
+  font-family: var(--vpd-font-mono);
+}
+
+.vpd-no-data {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  color: var(--vpd-text-dim);
+  font-size: 13px;
+}
+
+.vpd-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--vpd-text-muted);
+}
+
+.vpd-empty-state p {
+  margin: 8px 0;
+}
+
+/* ============================================================================
+   Scrollbar
+   ============================================================================ */
+
+.vpd-dashboard ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.vpd-dashboard ::-webkit-scrollbar-track {
+  background: var(--vpd-bg-1);
+}
+
+.vpd-dashboard ::-webkit-scrollbar-thumb {
+  background: var(--vpd-bg-4);
+  border-radius: 4px;
+}
+
+.vpd-dashboard ::-webkit-scrollbar-thumb:hover {
+  background: var(--vpd-text-dim);
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 600px) {
+  .vpd-dashboard {
+    padding: 12px;
+  }
+  
+  .vpd-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .vpd-connection-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .vpd-connection-panel input {
+    min-width: 100%;
+  }
+  
+  .vpd-status {
+    margin-left: 0;
+  }
+  
+  .vpd-pipelines {
+    grid-template-columns: 1fr;
+  }
+}
