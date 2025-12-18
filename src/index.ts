@@ -39,9 +39,9 @@ export {
   PointCloudViewer,
   DetectionList,
   PointCloudOptions,
-} from "../dashboard";
+} from "./dashboard";
 
-export type { DashboardProps } from "../dashboard";
+export type { DashboardProps } from "./dashboard";
 
 // Re-export CSS path for consumers
 export const CSS_PATH = "viam-pipeline-debugger/src/dashboard.css";
