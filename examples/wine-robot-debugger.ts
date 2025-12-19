@@ -1352,8 +1352,18 @@ function createUI(): void {
       .latency { color: var(--accent); }
       .stage-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
       .stage-content { margin-top: 10px; }
-      .stage-content canvas { max-width: 100%; max-height: 200px; background: #000; border-radius: 4px; display: block; }
-      .stage-content img { max-width: 100%; max-height: 200px; object-fit: contain; background: #000; border-radius: 4px; }
+      .stage-content .image-container { 
+        width: 100%; 
+        height: 180px; 
+        background: #000; 
+        border-radius: 4px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
+        overflow: hidden;
+      }
+      .stage-content canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .stage-content img { max-width: 100%; max-height: 100%; object-fit: contain; }
       .detections { font-family: monospace; font-size: 12px; }
       .detection { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,212,170,0.1); border-radius: 3px; margin-bottom: 4px; }
       .error-msg { color: var(--error); font-size: 12px; padding: 8px; background: rgba(239,68,68,0.1); border-radius: 4px; }
@@ -1488,7 +1498,7 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
   } else if (result.image) {
     const blob = new Blob([result.image.data], { type: result.image.mimeType });
     const url = URL.createObjectURL(blob);
-    contentEl.innerHTML = `<img src="${url}" alt="${result.stageName}">`;
+    contentEl.innerHTML = `<div class="image-container"><img src="${url}" alt="${result.stageName}"></div>`;
     
     const img = contentEl.querySelector('img')!;
     img.onload = () => {
@@ -1524,8 +1534,10 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
       }
       
       contentEl.innerHTML = '';
-      canvas.style.cssText = 'max-width:100%;max-height:200px;background:#000;border-radius:4px;display:block;';
-      contentEl.appendChild(canvas);
+      const container = document.createElement('div');
+      container.className = 'image-container';
+      container.appendChild(canvas);
+      contentEl.appendChild(container);
       
       // Add detection summary below image
       if (result.detections) {
@@ -1563,17 +1575,21 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
   } else if (result.pointCloud) {
     const pc = result.pointCloud;
     const stats = pc.stats;
+    // Convert meters to mm for display
+    const m2mm = 1000;
     const size = {
-      x: (pc.boundingBox.max.x - pc.boundingBox.min.x).toFixed(0),
-      y: (pc.boundingBox.max.y - pc.boundingBox.min.y).toFixed(0),
-      z: (pc.boundingBox.max.z - pc.boundingBox.min.z).toFixed(0),
+      x: ((pc.boundingBox.max.x - pc.boundingBox.min.x) * m2mm).toFixed(0),
+      y: ((pc.boundingBox.max.y - pc.boundingBox.min.y) * m2mm).toFixed(0),
+      z: ((pc.boundingBox.max.z - pc.boundingBox.min.z) * m2mm).toFixed(0),
     };
     
+    // Volume in cm³ for density calculation
+    const volumeCm3 = stats ? stats.volume * 1000000 : 0;
+    const densityPerCm3 = volumeCm3 > 0 ? pc.points.length / volumeCm3 : 0;
+    
     // Determine quality indicators
-    const densityClass = stats && stats.pointDensity > 0.001 ? 'good' : stats && stats.pointDensity > 0.0001 ? 'warn' : 'bad';
+    const densityClass = densityPerCm3 > 100 ? 'good' : densityPerCm3 > 10 ? 'warn' : 'bad';
     const coverageClass = stats && stats.coverage > 10 ? 'good' : stats && stats.coverage > 5 ? 'warn' : 'bad';
-    const normalClass = stats?.normalQuality ? 
-      (stats.normalQuality.consistency > 0.8 ? 'good' : stats.normalQuality.consistency > 0.5 ? 'warn' : 'bad') : '';
     
     contentEl.innerHTML = `
       <div style="background:#111;border-radius:4px;padding:12px;">
@@ -1585,30 +1601,13 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
           <div class="stats-grid">
             <div class="stat">
               <span class="stat-label">Density</span>
-              <span class="stat-value ${densityClass}">${(stats.pointDensity * 1000).toFixed(3)} pts/mm³</span>
+              <span class="stat-value ${densityClass}">${densityPerCm3.toFixed(1)} pts/cm³</span>
             </div>
             <div class="stat">
               <span class="stat-label">Coverage</span>
               <span class="stat-value ${coverageClass}">${stats.coverage.toFixed(1)}%</span>
               <div class="stat-bar"><div class="stat-bar-fill ${coverageClass}" style="width:${Math.min(100, stats.coverage)}%"></div></div>
             </div>
-            ${stats.normalQuality ? `
-              <div class="stat">
-                <span class="stat-label">Valid Normals</span>
-                <span class="stat-value">${stats.normalQuality.validPercent.toFixed(0)}%</span>
-                <div class="stat-bar"><div class="stat-bar-fill" style="width:${stats.normalQuality.validPercent}%"></div></div>
-              </div>
-              <div class="stat">
-                <span class="stat-label">Normal Consistency</span>
-                <span class="stat-value ${normalClass}">${(stats.normalQuality.consistency * 100).toFixed(0)}%</span>
-                <div class="stat-bar"><div class="stat-bar-fill ${normalClass}" style="width:${stats.normalQuality.consistency * 100}%"></div></div>
-              </div>
-            ` : `
-              <div class="stat" style="grid-column: span 2;">
-                <span class="stat-label">Normals</span>
-                <span class="stat-value bad">Not available</span>
-              </div>
-            `}
           </div>
         ` : ''}
       </div>
