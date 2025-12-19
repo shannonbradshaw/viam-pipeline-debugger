@@ -51,26 +51,26 @@ const PIPELINES: Pipeline[] = [
     stages: [
       { 
         name: 'left-cam', 
-        label: 'Left RealSense', 
+        label: 'left-cam', 
         type: 'camera',
         description: 'Intel RealSense depth camera on left arm'
       },
       { 
         name: 'glass-finder-first-service-left', 
-        label: 'Glass Detector (2D)', 
+        label: 'glass-finder-first-service-left', 
         type: 'vision',
         sourceCamera: 'left-cam',
         description: 'ML model detecting glass from top view'
       },
       { 
         name: 'glass-finder-left-crop', 
-        label: 'Detection Crop', 
+        label: 'glass-finder-left-crop', 
         type: 'camera',
         description: 'Point cloud cropped to detected glass bbox'
       },
       { 
         name: 'cam-left-cup-crop', 
-        label: 'Cup Region', 
+        label: 'cam-left-cup-crop', 
         type: 'camera',
         description: '3D bounding box filtered point cloud'
       },
@@ -83,26 +83,26 @@ const PIPELINES: Pipeline[] = [
     stages: [
       { 
         name: 'right-cam', 
-        label: 'Right RealSense', 
+        label: 'right-cam', 
         type: 'camera',
         description: 'Intel RealSense depth camera on right arm'
       },
       { 
         name: 'glass-finder-first-service-right', 
-        label: 'Glass Detector (2D)', 
+        label: 'glass-finder-first-service-right', 
         type: 'vision',
         sourceCamera: 'right-cam',
         description: 'ML model detecting glass from top view'
       },
       { 
         name: 'glass-finder-right-crop', 
-        label: 'Detection Crop', 
+        label: 'glass-finder-right-crop', 
         type: 'camera',
         description: 'Point cloud cropped to detected glass bbox'
       },
       { 
         name: 'cam-right-cup-crop', 
-        label: 'Cup Region', 
+        label: 'cam-right-cup-crop', 
         type: 'camera',
         description: '3D bounding box filtered point cloud'
       },
@@ -115,28 +115,28 @@ const PIPELINES: Pipeline[] = [
     stages: [
       { 
         name: 'cam-left-cup-crop', 
-        label: 'Left Cup Crop', 
+        label: 'cam-left-cup-crop', 
         type: 'camera',
         pointCloudOnly: true,
         description: 'Left camera cup region'
       },
       { 
         name: 'cam-right-cup-crop', 
-        label: 'Right Cup Crop', 
+        label: 'cam-right-cup-crop', 
         type: 'camera',
         pointCloudOnly: true,
         description: 'Right camera cup region'
       },
       { 
         name: 'cam-merged-cup', 
-        label: 'Merged Point Cloud', 
+        label: 'cam-merged-cup', 
         type: 'camera',
         pointCloudOnly: true,
         description: 'Combined point clouds'
       },
       { 
         name: 'cup-finder-segment', 
-        label: '3D Segmentation', 
+        label: 'cup-finder-segment', 
         type: 'vision-3d',
         sourceCamera: 'cam-merged-cup',
         description: 'Obstacle segmentation for cup detection'
@@ -150,13 +150,13 @@ const PIPELINES: Pipeline[] = [
     stages: [
       { 
         name: 'cam-glass', 
-        label: 'Glass Camera', 
+        label: 'cam-glass', 
         type: 'camera',
         description: 'Webcam viewing pour area'
       },
       { 
         name: 'pour-glass-find-service', 
-        label: 'Pour Position Detector', 
+        label: 'pour-glass-find-service', 
         type: 'vision',
         sourceCamera: 'cam-glass',
         description: 'Detects glass for pour alignment'
@@ -170,13 +170,13 @@ const PIPELINES: Pipeline[] = [
     stages: [
       { 
         name: 'right-cam', 
-        label: 'Right RealSense', 
+        label: 'right-cam', 
         type: 'camera',
         description: 'Intel RealSense depth camera'
       },
       { 
         name: 'cam-right-bottle-crop', 
-        label: 'Bottle Region', 
+        label: 'cam-right-bottle-crop', 
         type: 'camera',
         description: 'Point cloud cropped to bottle area'
       },
@@ -646,6 +646,16 @@ function getHistoryStats(stageName: string): {
 // 3D Point Cloud Viewer
 // ============================================================================
 
+// Persistent view state that survives refreshes
+const viewer3DState = {
+  rotationX: 0,
+  rotationY: 0,
+  panX: 0,
+  panY: 0,
+  zoom: 1,
+  initialized: false,
+};
+
 function create3DPointCloudViewer(
   objects3d: Object3D[],
   container: HTMLElement,
@@ -711,8 +721,10 @@ function create3DPointCloudViewer(
       border-radius: 4px;
       z-index: 10;
     `;
+    // Use same safe hues as point clouds (avoiding RGB axis colors)
+    const safeHues = [30, 60, 180, 270, 300, 330, 45, 160, 200, 280];
     legend.innerHTML = objects3d.map((obj, i) => {
-      const hue = (i * 137.5) % 360;
+      const hue = safeHues[i % safeHues.length];
       return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
         <span style="width:10px;height:10px;background:hsl(${hue},80%,50%);border-radius:2px;"></span>
         <span>${obj.label} (${obj.pointCloud?.points.length.toLocaleString() || 0})</span>
@@ -767,7 +779,10 @@ function create3DPointCloudViewer(
     objects3d.forEach((obj, i) => {
       if (!obj.pointCloud || obj.pointCloud.points.length === 0) return;
       
-      const hue = (i * 137.5) % 360;
+      // Use colors that avoid red (0°), green (120°), blue (240°) since those are XYZ axis colors
+      // Good hues: orange (30), yellow (60), cyan (180), magenta (300), purple (270), pink (330)
+      const safeHues = [30, 60, 180, 270, 300, 330, 45, 160, 200, 280];
+      const hue = safeHues[i % safeHues.length];
       const color = new THREE.Color(`hsl(${hue}, 80%, 60%)`);
       
       const geometry = new THREE.BufferGeometry();
@@ -825,15 +840,17 @@ function create3DPointCloudViewer(
     const axesHelper = new THREE.AxesHelper(0.05);
     pivotGroup.add(axesHelper);
     
-    // Mouse controls
+    // Mouse controls - use persistent state
     let isDragging = false;
     let isShiftDown = false;
     let previousMousePosition = { x: 0, y: 0 };
-    let rotationX = 0;
-    let rotationY = 0;
-    let panX = 0;
-    let panY = 0;
-    let zoom = 1;
+    
+    // Initialize from persistent state (or defaults for first load)
+    let rotationX = viewer3DState.rotationX;
+    let rotationY = viewer3DState.rotationY;
+    let panX = viewer3DState.panX;
+    let panY = viewer3DState.panY;
+    let zoom = viewer3DState.zoom;
     
     viewerDiv.addEventListener('mousedown', (e) => {
       isDragging = true;
@@ -858,6 +875,12 @@ function create3DPointCloudViewer(
         rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
       }
       
+      // Save to persistent state
+      viewer3DState.rotationX = rotationX;
+      viewer3DState.rotationY = rotationY;
+      viewer3DState.panX = panX;
+      viewer3DState.panY = panY;
+      
       previousMousePosition = { x: e.clientX, y: e.clientY };
     });
     
@@ -875,6 +898,8 @@ function create3DPointCloudViewer(
       e.preventDefault();
       zoom *= e.deltaY > 0 ? 1.1 : 0.9;
       zoom = Math.max(0.1, Math.min(10, zoom));
+      // Save to persistent state
+      viewer3DState.zoom = zoom;
     }, { passive: false });
     
     // Track shift key
@@ -1417,10 +1442,12 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
       
       // Add object details list with colored borders
       // Note: coordinates are in meters, convert to mm for display
+      // Use same safe hues as 3D viewer (avoiding RGB axis colors)
       const m2mm = 1000;
+      const safeHues = [30, 60, 180, 270, 300, 330, 45, 160, 200, 280];
       html += `<div class="detections" style="margin-bottom:8px;">`;
       html += result.objects3d.map((obj, i) => {
-        const hue = (i * 137.5) % 360;
+        const hue = safeHues[i % safeHues.length];
         return `
           <div class="detection" style="flex-direction:column;align-items:flex-start;gap:4px;border-left:3px solid hsl(${hue}, 80%, 50%);padding-left:8px;">
             <span style="font-weight:500;">${obj.label}</span>
@@ -1608,10 +1635,10 @@ function appendPointCloudStats(contentEl: HTMLElement, pc: PointCloudData): void
     z: ((pc.boundingBox.max.z - pc.boundingBox.min.z) * metersToMm).toFixed(0),
   };
   
-  // Volume in mm³ (convert from m³)
-  const volumeMm3 = stats.volume * (metersToMm * metersToMm * metersToMm);
-  // Density in points per cm³ (more reasonable unit)
-  const densityPerCm3 = volumeMm3 > 0 ? (pc.points.length / volumeMm3) * 1000 : 0;
+  // Volume in cm³ (convert from m³: 1 m³ = 1,000,000 cm³)
+  const volumeCm3 = stats.volume * 1000000;
+  // Density in points per cm³ - more intuitive than per mm³
+  const densityPerCm3 = volumeCm3 > 0 ? pc.points.length / volumeCm3 : 0;
   
   const densityClass = densityPerCm3 > 100 ? 'good' : densityPerCm3 > 10 ? 'warn' : 'bad';
   const coverageClass = stats.coverage > 10 ? 'good' : stats.coverage > 5 ? 'warn' : 'bad';
