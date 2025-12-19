@@ -753,11 +753,15 @@ function create3DPointCloudViewer(
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     viewerDiv.appendChild(renderer.domElement);
     
-    // Create a group to hold all point clouds (for centering)
-    const pointCloudGroup = new THREE.Group();
-    scene.add(pointCloudGroup);
+    // Create pivot group for rotation (this stays at origin)
+    const pivotGroup = new THREE.Group();
+    scene.add(pivotGroup);
     
-    // Add points for each object
+    // Create a group to hold all point clouds
+    const pointCloudGroup = new THREE.Group();
+    pivotGroup.add(pointCloudGroup);
+    
+    // Add points for each object - store raw positions first
     let allPoints: any[] = [];
     
     objects3d.forEach((obj, i) => {
@@ -787,22 +791,26 @@ function create3DPointCloudViewer(
       pointCloudGroup.add(points);
     });
     
-    // Calculate center and scale
+    // Calculate center and scale, then offset the point cloud group
+    // so the center of the points is at the pivot's origin
     let initialCameraZ = 1.5;
+    let center = new THREE.Vector3();
+    
     if (allPoints.length > 0) {
       const box = new THREE.Box3().setFromPoints(allPoints);
-      const center = box.getCenter(new THREE.Vector3());
+      center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
       
-      // Center the point cloud group
-      pointCloudGroup.position.sub(center);
+      // Offset the point cloud group so its center is at the pivot origin
+      // This means when we rotate the pivot, the points rotate around their own center
+      pointCloudGroup.position.set(-center.x, -center.y, -center.z);
       
       // Position camera to see the whole scene
       initialCameraZ = maxDim * 1.5;
       camera.position.z = initialCameraZ;
       
-      // Add bounding box wireframe
+      // Add bounding box wireframe (also offset to be centered at origin)
       const boxHelper = new THREE.Box3Helper(
         new THREE.Box3(
           new THREE.Vector3(box.min.x - center.x, box.min.y - center.y, box.min.z - center.z),
@@ -810,12 +818,12 @@ function create3DPointCloudViewer(
         ),
         0x444444
       );
-      scene.add(boxHelper);
+      pivotGroup.add(boxHelper);
     }
     
-    // Add axes helper (centered)
+    // Add axes helper at the center of the point cloud
     const axesHelper = new THREE.AxesHelper(0.05);
-    scene.add(axesHelper);
+    pivotGroup.add(axesHelper);
     
     // Mouse controls
     let isDragging = false;
@@ -885,14 +893,15 @@ function create3DPointCloudViewer(
     function animate() {
       animationId = requestAnimationFrame(animate);
       
-      // Apply transformations to the point cloud group
-      pointCloudGroup.rotation.x = rotationX;
-      pointCloudGroup.rotation.y = rotationY;
+      // Rotate the pivot group - this rotates everything around the center of the point clouds
+      pivotGroup.rotation.x = rotationX;
+      pivotGroup.rotation.y = rotationY;
       
-      // Apply pan to camera
+      // Apply pan and zoom to camera
       camera.position.x = panX;
       camera.position.y = panY;
       camera.position.z = initialCameraZ * zoom;
+      camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
     }
@@ -1407,6 +1416,8 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
       let html = '';
       
       // Add object details list with colored borders
+      // Note: coordinates are in meters, convert to mm for display
+      const m2mm = 1000;
       html += `<div class="detections" style="margin-bottom:8px;">`;
       html += result.objects3d.map((obj, i) => {
         const hue = (i * 137.5) % 360;
@@ -1414,8 +1425,8 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
           <div class="detection" style="flex-direction:column;align-items:flex-start;gap:4px;border-left:3px solid hsl(${hue}, 80%, 50%);padding-left:8px;">
             <span style="font-weight:500;">${obj.label}</span>
             <span style="font-size:10px;color:#888;">
-              Center: (${obj.center.x.toFixed(0)}, ${obj.center.y.toFixed(0)}, ${obj.center.z.toFixed(0)}) mm
-              ${obj.dimensions ? `<br>Size: ${obj.dimensions.x.toFixed(0)}×${obj.dimensions.y.toFixed(0)}×${obj.dimensions.z.toFixed(0)} mm` : ''}
+              Center: (${(obj.center.x * m2mm).toFixed(0)}, ${(obj.center.y * m2mm).toFixed(0)}, ${(obj.center.z * m2mm).toFixed(0)}) mm
+              ${obj.dimensions ? `<br>Size: ${(obj.dimensions.x * m2mm).toFixed(0)}×${(obj.dimensions.y * m2mm).toFixed(0)}×${(obj.dimensions.z * m2mm).toFixed(0)} mm` : ''}
               ${obj.pointCloud ? `<br>Points: ${obj.pointCloud.points.length.toLocaleString()}` : ''}
             </span>
           </div>
@@ -1433,121 +1444,6 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
       // Add combined point cloud stats if available
       if (result.segmentedPointCloud) {
         appendPointCloudStats(contentEl, result.segmentedPointCloud);
-      }
-      
-      // Now add the source image with bounding boxes if we have intrinsics
-      if (result.image) {
-        const blob = new Blob([result.image.data], { type: result.image.mimeType });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.src = url;
-        
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0);
-          
-          // Draw bounding boxes if we have intrinsics
-          if (result.intrinsics && result.objects3d) {
-            const K = result.intrinsics;
-            
-            // Scale factor if the image size differs from intrinsics size
-            // This handles cases where we use left-cam intrinsics for cam-merged-cup images
-            const scaleX = canvas.width / K.widthPx;
-            const scaleY = canvas.height / K.heightPx;
-            
-            // If scale is very different, the projection won't be accurate
-            // This happens when we're using intrinsics from a different camera
-            if (scaleX < 0.3 || scaleY < 0.3 || scaleX > 3 || scaleY > 3) {
-              console.log(`  Skipping 3D bounding box overlay: intrinsics from different camera (scale ${scaleX.toFixed(2)}x${scaleY.toFixed(2)})`);
-              // Just show the image without bounding boxes
-              canvas.style.maxWidth = '100%';
-              contentEl.appendChild(canvas);
-              URL.revokeObjectURL(url);
-              return;
-            }
-            
-            // Scaled intrinsics
-            const fx = K.focalXPx * scaleX;
-            const fy = K.focalYPx * scaleY;
-            const cx = K.centerXPx * scaleX;
-            const cy = K.centerYPx * scaleY;
-            
-            ctx.lineWidth = 3;
-            ctx.font = 'bold 12px monospace';
-            
-            console.log(`  Drawing ${result.objects3d.length} bounding boxes, scale: ${scaleX.toFixed(2)}x${scaleY.toFixed(2)}`);
-            
-            result.objects3d.forEach((obj, i) => {
-              if (!obj.pointCloud || obj.pointCloud.points.length === 0) return;
-              
-              const hue = (i * 137.5) % 360;
-              const bb = obj.pointCloud.boundingBox;
-              
-              // Project 3D bounding box corners to 2D using pinhole camera model
-              // The point cloud is in camera frame, so we just need: u = fx * X/Z + cx, v = fy * Y/Z + cy
-              // We'll project all 8 corners and find the 2D bounding box
-              const corners3D = [
-                { x: bb.min.x, y: bb.min.y, z: bb.min.z },
-                { x: bb.max.x, y: bb.min.y, z: bb.min.z },
-                { x: bb.min.x, y: bb.max.y, z: bb.min.z },
-                { x: bb.max.x, y: bb.max.y, z: bb.min.z },
-                { x: bb.min.x, y: bb.min.y, z: bb.max.z },
-                { x: bb.max.x, y: bb.min.y, z: bb.max.z },
-                { x: bb.min.x, y: bb.max.y, z: bb.max.z },
-                { x: bb.max.x, y: bb.max.y, z: bb.max.z },
-              ];
-              
-              let minU = Infinity, maxU = -Infinity;
-              let minV = Infinity, maxV = -Infinity;
-              
-              for (const p of corners3D) {
-                // Skip points behind the camera
-                if (p.z <= 0) continue;
-                
-                // Pinhole projection with scaled intrinsics: u = fx * X/Z + cx, v = fy * Y/Z + cy
-                const u = fx * (p.x / p.z) + cx;
-                const v = fy * (p.y / p.z) + cy;
-                
-                minU = Math.min(minU, u);
-                maxU = Math.max(maxU, u);
-                minV = Math.min(minV, v);
-                maxV = Math.max(maxV, v);
-              }
-              
-              console.log(`    Object ${i} "${obj.label}": 3D bb z=${bb.min.z.toFixed(3)}-${bb.max.z.toFixed(3)}m -> 2D rect (${minU.toFixed(0)},${minV.toFixed(0)})-(${maxU.toFixed(0)},${maxV.toFixed(0)})`);
-              
-              // Only draw if we got valid projections
-              if (isFinite(minU) && isFinite(maxU) && isFinite(minV) && isFinite(maxV)) {
-                // Clamp to image bounds
-                minU = Math.max(0, minU);
-                maxU = Math.min(canvas.width, maxU);
-                minV = Math.max(0, minV);
-                maxV = Math.min(canvas.height, maxV);
-                
-                // Draw bounding box
-                ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
-                ctx.strokeRect(minU, minV, maxU - minU, maxV - minV);
-                
-                // Draw label background and text
-                const label = `${obj.label} (${obj.pointCloud.points.length})`;
-                const metrics = ctx.measureText(label);
-                ctx.fillStyle = `hsla(${hue}, 70%, 15%, 0.9)`;
-                ctx.fillRect(minU, minV - 18, metrics.width + 8, 18);
-                ctx.fillStyle = '#fff';
-                ctx.fillText(label, minU + 4, minV - 5);
-              }
-            });
-          }
-          
-          canvas.style.cssText = 'width:100%;max-height:200px;background:#000;border-radius:4px;margin-bottom:8px;';
-          // Insert canvas at the beginning
-          contentEl.insertBefore(canvas, contentEl.firstChild);
-          
-          URL.revokeObjectURL(url);
-        };
       }
     }
   } else if (result.image) {
@@ -1704,16 +1600,21 @@ function appendPointCloudStats(contentEl: HTMLElement, pc: PointCloudData): void
   const stats = pc.stats;
   if (!stats) return;
   
+  // Point cloud coordinates are typically in meters, convert to mm for display
+  const metersToMm = 1000;
   const size = {
-    x: (pc.boundingBox.max.x - pc.boundingBox.min.x).toFixed(0),
-    y: (pc.boundingBox.max.y - pc.boundingBox.min.y).toFixed(0),
-    z: (pc.boundingBox.max.z - pc.boundingBox.min.z).toFixed(0),
+    x: ((pc.boundingBox.max.x - pc.boundingBox.min.x) * metersToMm).toFixed(0),
+    y: ((pc.boundingBox.max.y - pc.boundingBox.min.y) * metersToMm).toFixed(0),
+    z: ((pc.boundingBox.max.z - pc.boundingBox.min.z) * metersToMm).toFixed(0),
   };
   
-  const densityClass = stats.pointDensity > 0.001 ? 'good' : stats.pointDensity > 0.0001 ? 'warn' : 'bad';
+  // Volume in mm³ (convert from m³)
+  const volumeMm3 = stats.volume * (metersToMm * metersToMm * metersToMm);
+  // Density in points per cm³ (more reasonable unit)
+  const densityPerCm3 = volumeMm3 > 0 ? (pc.points.length / volumeMm3) * 1000 : 0;
+  
+  const densityClass = densityPerCm3 > 100 ? 'good' : densityPerCm3 > 10 ? 'warn' : 'bad';
   const coverageClass = stats.coverage > 10 ? 'good' : stats.coverage > 5 ? 'warn' : 'bad';
-  const normalClass = stats.normalQuality ? 
-    (stats.normalQuality.consistency > 0.8 ? 'good' : stats.normalQuality.consistency > 0.5 ? 'warn' : 'bad') : '';
   
   const statsDiv = document.createElement('div');
   statsDiv.style.cssText = 'background:#111;border-radius:4px;padding:12px;margin-top:8px;';
@@ -1725,30 +1626,13 @@ function appendPointCloudStats(contentEl: HTMLElement, pc: PointCloudData): void
     <div class="stats-grid">
       <div class="stat">
         <span class="stat-label">Density</span>
-        <span class="stat-value ${densityClass}">${(stats.pointDensity * 1000).toFixed(3)} pts/mm³</span>
+        <span class="stat-value ${densityClass}">${densityPerCm3.toFixed(1)} pts/cm³</span>
       </div>
       <div class="stat">
         <span class="stat-label">Coverage</span>
         <span class="stat-value ${coverageClass}">${stats.coverage.toFixed(1)}%</span>
         <div class="stat-bar"><div class="stat-bar-fill ${coverageClass}" style="width:${Math.min(100, stats.coverage)}%"></div></div>
       </div>
-      ${stats.normalQuality ? `
-        <div class="stat">
-          <span class="stat-label">Valid Normals</span>
-          <span class="stat-value">${stats.normalQuality.validPercent.toFixed(0)}%</span>
-          <div class="stat-bar"><div class="stat-bar-fill" style="width:${stats.normalQuality.validPercent}%"></div></div>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Normal Consistency</span>
-          <span class="stat-value ${normalClass}">${(stats.normalQuality.consistency * 100).toFixed(0)}%</span>
-          <div class="stat-bar"><div class="stat-bar-fill ${normalClass}" style="width:${stats.normalQuality.consistency * 100}%"></div></div>
-        </div>
-      ` : `
-        <div class="stat" style="grid-column: span 2;">
-          <span class="stat-label">Normals</span>
-          <span class="stat-value bad">Not available</span>
-        </div>
-      `}
     </div>
   `;
   contentEl.appendChild(statsDiv);
