@@ -1061,14 +1061,19 @@ class WineRobotDebugger {
     const detections = await vision.getDetectionsFromCamera(cameraName);
     console.log(`  [${visionName}] Got ${detections.length} detections from ${cameraName}`);
     return detections.map(d => {
-      console.log(`    Detection: ${d.className} ${((d.confidence ?? 0) * 100).toFixed(1)}% at (${d.xMin},${d.yMin})-(${d.xMax},${d.yMax})`);
+      // Convert BigInt values to numbers (Viam SDK returns BigInt for coordinates)
+      const xMin = Number(d.xMin ?? 0);
+      const yMin = Number(d.yMin ?? 0);
+      const xMax = Number(d.xMax ?? 0);
+      const yMax = Number(d.yMax ?? 0);
+      console.log(`    Detection: ${d.className} ${((d.confidence ?? 0) * 100).toFixed(1)}% at (${xMin},${yMin})-(${xMax},${yMax})`);
       return {
         className: d.className ?? 'unknown',
         confidence: d.confidence ?? 0,
-        xMin: d.xMin ?? 0,
-        yMin: d.yMin ?? 0,
-        xMax: d.xMax ?? 0,
-        yMax: d.yMax ?? 0,
+        xMin,
+        yMin,
+        xMax,
+        yMax,
       };
     });
   }
