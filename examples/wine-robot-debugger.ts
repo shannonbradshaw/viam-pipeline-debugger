@@ -240,6 +240,15 @@ interface DetectionStats {
   classes: string[];             // unique classes detected
 }
 
+interface CameraIntrinsics {
+  widthPx: number;
+  heightPx: number;
+  focalXPx: number;
+  focalYPx: number;
+  centerXPx: number;
+  centerYPx: number;
+}
+
 interface StageResult {
   stageName: string;
   label: string;
@@ -253,6 +262,7 @@ interface StageResult {
   detectionStats?: DetectionStats;
   objects3d?: Object3D[];
   segmentedPointCloud?: PointCloudData;  // Combined point cloud from all segmented objects
+  intrinsics?: CameraIntrinsics;         // Camera intrinsics for 3D->2D projection
 }
 
 // History tracking for trends
@@ -633,11 +643,306 @@ function getHistoryStats(stageName: string): {
 }
 
 // ============================================================================
+// 3D Point Cloud Viewer
+// ============================================================================
+
+function create3DPointCloudViewer(
+  objects3d: Object3D[],
+  container: HTMLElement,
+  height: number = 300
+): void {
+  // Check if Three.js is already loaded
+  if ((window as any).THREE) {
+    initViewer((window as any).THREE);
+    return;
+  }
+  
+  // Import Three.js from CDN
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => {
+    initViewer((window as any).THREE);
+  };
+  document.head.appendChild(script);
+  
+  function initViewer(THREE: any) {
+    if (!THREE) {
+      console.error('Three.js not loaded');
+      return;
+    }
+    
+    // Create container
+    const viewerDiv = document.createElement('div');
+    viewerDiv.style.cssText = `
+      width: 100%;
+      height: ${height}px;
+      background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      position: relative;
+      cursor: grab;
+      overflow: hidden;
+    `;
+    
+    // Add controls hint
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      pointer-events: none;
+      z-index: 10;
+    `;
+    hint.textContent = 'Drag to rotate • Scroll to zoom • Shift+drag to pan';
+    viewerDiv.appendChild(hint);
+    
+    // Add legend
+    const legend = document.createElement('div');
+    legend.style.cssText = `
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.8);
+      background: rgba(0,0,0,0.5);
+      padding: 6px 10px;
+      border-radius: 4px;
+      z-index: 10;
+    `;
+    legend.innerHTML = objects3d.map((obj, i) => {
+      const hue = (i * 137.5) % 360;
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+        <span style="width:10px;height:10px;background:hsl(${hue},80%,50%);border-radius:2px;"></span>
+        <span>${obj.label} (${obj.pointCloud?.points.length.toLocaleString() || 0})</span>
+      </div>`;
+    }).join('');
+    viewerDiv.appendChild(legend);
+    
+    // Add axis labels
+    const axisLabels = document.createElement('div');
+    axisLabels.style.cssText = `
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      z-index: 10;
+    `;
+    axisLabels.innerHTML = `
+      <span style="color:#ff4444;">X</span> 
+      <span style="color:#44ff44;">Y</span> 
+      <span style="color:#4444ff;">Z</span>
+    `;
+    viewerDiv.appendChild(axisLabels);
+    
+    container.insertBefore(viewerDiv, container.firstChild);
+    
+    // Setup Three.js scene
+    const scene = new THREE.Scene();
+    
+    // Camera
+    const aspect = viewerDiv.clientWidth / height;
+    const camera = new THREE.PerspectiveCamera(60, aspect, 0.001, 100);
+    camera.position.set(0, 0, 1.5);
+    
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(viewerDiv.clientWidth, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    viewerDiv.appendChild(renderer.domElement);
+    
+    // Create a group to hold all point clouds (for centering)
+    const pointCloudGroup = new THREE.Group();
+    scene.add(pointCloudGroup);
+    
+    // Add points for each object
+    let allPoints: any[] = [];
+    
+    objects3d.forEach((obj, i) => {
+      if (!obj.pointCloud || obj.pointCloud.points.length === 0) return;
+      
+      const hue = (i * 137.5) % 360;
+      const color = new THREE.Color(`hsl(${hue}, 80%, 60%)`);
+      
+      const geometry = new THREE.BufferGeometry();
+      const positions: number[] = [];
+      
+      for (const p of obj.pointCloud.points) {
+        // Point cloud coordinates are typically in meters
+        positions.push(p.x, p.y, p.z);
+        allPoints.push(new THREE.Vector3(p.x, p.y, p.z));
+      }
+      
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      
+      const material = new THREE.PointsMaterial({
+        color: color,
+        size: 0.004,
+        sizeAttenuation: true,
+      });
+      
+      const points = new THREE.Points(geometry, material);
+      pointCloudGroup.add(points);
+    });
+    
+    // Calculate center and scale
+    let initialCameraZ = 1.5;
+    if (allPoints.length > 0) {
+      const box = new THREE.Box3().setFromPoints(allPoints);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      
+      // Center the point cloud group
+      pointCloudGroup.position.sub(center);
+      
+      // Position camera to see the whole scene
+      initialCameraZ = maxDim * 1.5;
+      camera.position.z = initialCameraZ;
+      
+      // Add bounding box wireframe
+      const boxHelper = new THREE.Box3Helper(
+        new THREE.Box3(
+          new THREE.Vector3(box.min.x - center.x, box.min.y - center.y, box.min.z - center.z),
+          new THREE.Vector3(box.max.x - center.x, box.max.y - center.y, box.max.z - center.z)
+        ),
+        0x444444
+      );
+      scene.add(boxHelper);
+    }
+    
+    // Add axes helper (centered)
+    const axesHelper = new THREE.AxesHelper(0.05);
+    scene.add(axesHelper);
+    
+    // Mouse controls
+    let isDragging = false;
+    let isShiftDown = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let rotationX = 0;
+    let rotationY = 0;
+    let panX = 0;
+    let panY = 0;
+    let zoom = 1;
+    
+    viewerDiv.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      viewerDiv.style.cursor = 'grabbing';
+      previousMousePosition = { x: e.clientX, y: e.clientY };
+    });
+    
+    viewerDiv.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const deltaX = e.clientX - previousMousePosition.x;
+      const deltaY = e.clientY - previousMousePosition.y;
+      
+      if (isShiftDown) {
+        // Pan
+        panX += deltaX * 0.001 * zoom;
+        panY -= deltaY * 0.001 * zoom;
+      } else {
+        // Rotate
+        rotationY += deltaX * 0.01;
+        rotationX += deltaY * 0.01;
+        rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
+      }
+      
+      previousMousePosition = { x: e.clientX, y: e.clientY };
+    });
+    
+    viewerDiv.addEventListener('mouseup', () => {
+      isDragging = false;
+      viewerDiv.style.cursor = 'grab';
+    });
+    
+    viewerDiv.addEventListener('mouseleave', () => {
+      isDragging = false;
+      viewerDiv.style.cursor = 'grab';
+    });
+    
+    viewerDiv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoom *= e.deltaY > 0 ? 1.1 : 0.9;
+      zoom = Math.max(0.1, Math.min(10, zoom));
+    }, { passive: false });
+    
+    // Track shift key
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') isShiftDown = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') isShiftDown = false;
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    
+    // Animation loop
+    let animationId: number;
+    
+    function animate() {
+      animationId = requestAnimationFrame(animate);
+      
+      // Apply transformations to the point cloud group
+      pointCloudGroup.rotation.x = rotationX;
+      pointCloudGroup.rotation.y = rotationY;
+      
+      // Apply pan to camera
+      camera.position.x = panX;
+      camera.position.y = panY;
+      camera.position.z = initialCameraZ * zoom;
+      
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+    
+    // Cleanup when container is removed
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.removedNodes) {
+          if (node === viewerDiv || (node as HTMLElement).contains?.(viewerDiv)) {
+            cleanup();
+            return;
+          }
+        }
+      }
+    });
+    
+    function cleanup() {
+      cancelAnimationFrame(animationId);
+      renderer.dispose();
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+      observer.disconnect();
+    }
+    
+    if (container.parentElement) {
+      observer.observe(container.parentElement, { childList: true, subtree: true });
+    }
+    
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => {
+      const width = viewerDiv.clientWidth;
+      if (width > 0) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+    });
+    resizeObserver.observe(viewerDiv);
+  }
+}
+
+// ============================================================================
 // Wine Robot Debugger Class
 // ============================================================================
 
 class WineRobotDebugger {
   private machine: VIAM.RobotClient | null = null;
+  private intrinsicsCache: Map<string, CameraIntrinsics | null> = new Map();
   
   async connect(): Promise<void> {
     console.log(`Connecting to ${CONFIG.host}...`);
@@ -677,6 +982,12 @@ class WineRobotDebugger {
     if (!this.machine) throw new Error('Not connected');
     const camera = new VIAM.CameraClient(this.machine, name);
     const result = await camera.getPointCloud();
+    
+    // Check if we got valid data
+    if (!result || !result.data || result.data.length === 0) {
+      throw new Error('Camera returned no point cloud data');
+    }
+    
     return parsePCD(result.data);
   }
   
@@ -692,6 +1003,44 @@ class WineRobotDebugger {
       xMax: d.xMax ?? 0,
       yMax: d.yMax ?? 0,
     }));
+  }
+  
+  async getCameraIntrinsics(cameraName: string): Promise<CameraIntrinsics | null> {
+    // Check cache first
+    if (this.intrinsicsCache.has(cameraName)) {
+      return this.intrinsicsCache.get(cameraName) ?? null;
+    }
+    
+    if (!this.machine) throw new Error('Not connected');
+    
+    try {
+      const camera = new VIAM.CameraClient(this.machine, cameraName);
+      const props = await camera.getProperties();
+      
+      // Extract intrinsic parameters - they come from the properties response
+      const intrinsics = props.intrinsicParameters;
+      if (intrinsics && intrinsics.widthPx && intrinsics.heightPx) {
+        const result: CameraIntrinsics = {
+          widthPx: intrinsics.widthPx,
+          heightPx: intrinsics.heightPx,
+          focalXPx: intrinsics.focalXPx ?? (intrinsics.widthPx / 2), // fallback estimate
+          focalYPx: intrinsics.focalYPx ?? (intrinsics.heightPx / 2),
+          centerXPx: intrinsics.centerXPx ?? (intrinsics.widthPx / 2),
+          centerYPx: intrinsics.centerYPx ?? (intrinsics.heightPx / 2),
+        };
+        console.log(`  [${cameraName}] Intrinsics: ${result.widthPx}x${result.heightPx}, f=(${result.focalXPx.toFixed(1)}, ${result.focalYPx.toFixed(1)}), c=(${result.centerXPx.toFixed(1)}, ${result.centerYPx.toFixed(1)})`);
+        this.intrinsicsCache.set(cameraName, result);
+        return result;
+      }
+      
+      console.log(`  [${cameraName}] No intrinsics available`);
+      this.intrinsicsCache.set(cameraName, null);
+      return null;
+    } catch (e) {
+      console.log(`  [${cameraName}] Failed to get intrinsics:`, e);
+      this.intrinsicsCache.set(cameraName, null);
+      return null;
+    }
   }
   
   async getObjectPointClouds(visionName: string, cameraName: string): Promise<{ objects: Object3D[], combinedPointCloud?: PointCloudData }> {
@@ -816,6 +1165,32 @@ class WineRobotDebugger {
         const { objects, combinedPointCloud } = await this.getObjectPointClouds(stage.name, stage.sourceCamera);
         result.objects3d = objects;
         result.segmentedPointCloud = combinedPointCloud;
+        
+        // Also fetch source camera image for visualization
+        try {
+          result.image = await this.getCameraImage(stage.sourceCamera);
+        } catch (e) {
+          console.log(`  [${stage.name}] Could not get source image:`, e);
+        }
+        
+        // Fetch camera intrinsics for 3D->2D projection
+        // Try the source camera first, then fall back to left-cam or right-cam
+        try {
+          result.intrinsics = await this.getCameraIntrinsics(stage.sourceCamera) ?? undefined;
+          
+          // If merged camera doesn't have intrinsics, try the underlying cameras
+          if (!result.intrinsics && stage.sourceCamera.includes('merged')) {
+            console.log(`  [${stage.name}] Merged camera has no intrinsics, trying left-cam...`);
+            result.intrinsics = await this.getCameraIntrinsics('left-cam') ?? undefined;
+          }
+          if (!result.intrinsics) {
+            console.log(`  [${stage.name}] Trying right-cam for intrinsics...`);
+            result.intrinsics = await this.getCameraIntrinsics('right-cam') ?? undefined;
+          }
+        } catch (e) {
+          console.log(`  [${stage.name}] Could not get intrinsics:`, e);
+        }
+        
         result.success = true;
       }
     } catch (error) {
@@ -1023,6 +1398,158 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
   // Update content
   if (result.error) {
     contentEl.innerHTML = `<div class="error-msg">${result.error}</div>`;
+  } else if (result.objects3d) {
+    // Handle vision-3d results (check before image since these also have images)
+    if (result.objects3d.length === 0) {
+      contentEl.innerHTML = `<div class="no-data">No 3D objects segmented</div>`;
+    } else {
+      // Build the HTML content
+      let html = '';
+      
+      // Add object details list with colored borders
+      html += `<div class="detections" style="margin-bottom:8px;">`;
+      html += result.objects3d.map((obj, i) => {
+        const hue = (i * 137.5) % 360;
+        return `
+          <div class="detection" style="flex-direction:column;align-items:flex-start;gap:4px;border-left:3px solid hsl(${hue}, 80%, 50%);padding-left:8px;">
+            <span style="font-weight:500;">${obj.label}</span>
+            <span style="font-size:10px;color:#888;">
+              Center: (${obj.center.x.toFixed(0)}, ${obj.center.y.toFixed(0)}, ${obj.center.z.toFixed(0)}) mm
+              ${obj.dimensions ? `<br>Size: ${obj.dimensions.x.toFixed(0)}×${obj.dimensions.y.toFixed(0)}×${obj.dimensions.z.toFixed(0)} mm` : ''}
+              ${obj.pointCloud ? `<br>Points: ${obj.pointCloud.points.length.toLocaleString()}` : ''}
+            </span>
+          </div>
+        `;
+      }).join('');
+      html += `</div>`;
+      
+      contentEl.innerHTML = html;
+      
+      // Add 3D point cloud viewer
+      if (result.objects3d.some(obj => obj.pointCloud && obj.pointCloud.points.length > 0)) {
+        create3DPointCloudViewer(result.objects3d, contentEl, 280);
+      }
+      
+      // Add combined point cloud stats if available
+      if (result.segmentedPointCloud) {
+        appendPointCloudStats(contentEl, result.segmentedPointCloud);
+      }
+      
+      // Now add the source image with bounding boxes if we have intrinsics
+      if (result.image) {
+        const blob = new Blob([result.image.data], { type: result.image.mimeType });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.src = url;
+        
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          
+          // Draw bounding boxes if we have intrinsics
+          if (result.intrinsics && result.objects3d) {
+            const K = result.intrinsics;
+            
+            // Scale factor if the image size differs from intrinsics size
+            // This handles cases where we use left-cam intrinsics for cam-merged-cup images
+            const scaleX = canvas.width / K.widthPx;
+            const scaleY = canvas.height / K.heightPx;
+            
+            // If scale is very different, the projection won't be accurate
+            // This happens when we're using intrinsics from a different camera
+            if (scaleX < 0.3 || scaleY < 0.3 || scaleX > 3 || scaleY > 3) {
+              console.log(`  Skipping 3D bounding box overlay: intrinsics from different camera (scale ${scaleX.toFixed(2)}x${scaleY.toFixed(2)})`);
+              // Just show the image without bounding boxes
+              canvas.style.maxWidth = '100%';
+              contentEl.appendChild(canvas);
+              URL.revokeObjectURL(url);
+              return;
+            }
+            
+            // Scaled intrinsics
+            const fx = K.focalXPx * scaleX;
+            const fy = K.focalYPx * scaleY;
+            const cx = K.centerXPx * scaleX;
+            const cy = K.centerYPx * scaleY;
+            
+            ctx.lineWidth = 3;
+            ctx.font = 'bold 12px monospace';
+            
+            console.log(`  Drawing ${result.objects3d.length} bounding boxes, scale: ${scaleX.toFixed(2)}x${scaleY.toFixed(2)}`);
+            
+            result.objects3d.forEach((obj, i) => {
+              if (!obj.pointCloud || obj.pointCloud.points.length === 0) return;
+              
+              const hue = (i * 137.5) % 360;
+              const bb = obj.pointCloud.boundingBox;
+              
+              // Project 3D bounding box corners to 2D using pinhole camera model
+              // The point cloud is in camera frame, so we just need: u = fx * X/Z + cx, v = fy * Y/Z + cy
+              // We'll project all 8 corners and find the 2D bounding box
+              const corners3D = [
+                { x: bb.min.x, y: bb.min.y, z: bb.min.z },
+                { x: bb.max.x, y: bb.min.y, z: bb.min.z },
+                { x: bb.min.x, y: bb.max.y, z: bb.min.z },
+                { x: bb.max.x, y: bb.max.y, z: bb.min.z },
+                { x: bb.min.x, y: bb.min.y, z: bb.max.z },
+                { x: bb.max.x, y: bb.min.y, z: bb.max.z },
+                { x: bb.min.x, y: bb.max.y, z: bb.max.z },
+                { x: bb.max.x, y: bb.max.y, z: bb.max.z },
+              ];
+              
+              let minU = Infinity, maxU = -Infinity;
+              let minV = Infinity, maxV = -Infinity;
+              
+              for (const p of corners3D) {
+                // Skip points behind the camera
+                if (p.z <= 0) continue;
+                
+                // Pinhole projection with scaled intrinsics: u = fx * X/Z + cx, v = fy * Y/Z + cy
+                const u = fx * (p.x / p.z) + cx;
+                const v = fy * (p.y / p.z) + cy;
+                
+                minU = Math.min(minU, u);
+                maxU = Math.max(maxU, u);
+                minV = Math.min(minV, v);
+                maxV = Math.max(maxV, v);
+              }
+              
+              console.log(`    Object ${i} "${obj.label}": 3D bb z=${bb.min.z.toFixed(3)}-${bb.max.z.toFixed(3)}m -> 2D rect (${minU.toFixed(0)},${minV.toFixed(0)})-(${maxU.toFixed(0)},${maxV.toFixed(0)})`);
+              
+              // Only draw if we got valid projections
+              if (isFinite(minU) && isFinite(maxU) && isFinite(minV) && isFinite(maxV)) {
+                // Clamp to image bounds
+                minU = Math.max(0, minU);
+                maxU = Math.min(canvas.width, maxU);
+                minV = Math.max(0, minV);
+                maxV = Math.min(canvas.height, maxV);
+                
+                // Draw bounding box
+                ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
+                ctx.strokeRect(minU, minV, maxU - minU, maxV - minV);
+                
+                // Draw label background and text
+                const label = `${obj.label} (${obj.pointCloud.points.length})`;
+                const metrics = ctx.measureText(label);
+                ctx.fillStyle = `hsla(${hue}, 70%, 15%, 0.9)`;
+                ctx.fillRect(minU, minV - 18, metrics.width + 8, 18);
+                ctx.fillStyle = '#fff';
+                ctx.fillText(label, minU + 4, minV - 5);
+              }
+            });
+          }
+          
+          canvas.style.cssText = 'width:100%;max-height:200px;background:#000;border-radius:4px;margin-bottom:8px;';
+          // Insert canvas at the beginning
+          contentEl.insertBefore(canvas, contentEl.firstChild);
+          
+          URL.revokeObjectURL(url);
+        };
+      }
+    }
   } else if (result.image) {
     const blob = new Blob([result.image.data], { type: result.image.mimeType });
     const url = URL.createObjectURL(blob);
@@ -1150,30 +1677,6 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
     // Add history stats if available
     appendHistoryStats(contentEl, result.stageName);
     
-  } else if (result.objects3d) {
-    if (result.objects3d.length === 0) {
-      contentEl.innerHTML = `<div class="no-data">No 3D objects segmented</div>`;
-    } else {
-      contentEl.innerHTML = `
-        <div class="detections">
-          ${result.objects3d.map(obj => `
-            <div class="detection" style="flex-direction:column;align-items:flex-start;gap:4px;">
-              <span style="font-weight:500;">${obj.label}</span>
-              <span style="font-size:10px;color:#888;">
-                Center: (${obj.center.x.toFixed(0)}, ${obj.center.y.toFixed(0)}, ${obj.center.z.toFixed(0)}) mm
-                ${obj.dimensions ? `<br>Size: ${obj.dimensions.x.toFixed(0)}×${obj.dimensions.y.toFixed(0)}×${obj.dimensions.z.toFixed(0)} mm` : ''}
-                ${obj.pointCloud ? `<br>Points: ${obj.pointCloud.points.length.toLocaleString()}` : ''}
-              </span>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      
-      // Add combined point cloud stats if available
-      if (result.segmentedPointCloud) {
-        appendPointCloudStats(contentEl, result.segmentedPointCloud);
-      }
-    }
   }
 }
 
