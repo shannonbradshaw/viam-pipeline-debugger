@@ -647,13 +647,12 @@ function getHistoryStats(stageName: string): {
 // ============================================================================
 
 // Persistent view state that survives refreshes
+// Using quaternion components for rotation to avoid gimbal lock
 const viewer3DState = {
-  rotationX: 0,
-  rotationY: 0,
+  quaternion: { x: 0, y: 0, z: 0, w: 1 }, // Identity quaternion
   panX: 0,
   panY: 0,
   zoom: 1,
-  initialized: false,
 };
 
 function create3DPointCloudViewer(
@@ -754,10 +753,12 @@ function create3DPointCloudViewer(
     // Setup Three.js scene
     const scene = new THREE.Scene();
     
-    // Camera
+    // Camera - positioned on +Y axis, looking at origin, with Z up
     const aspect = viewerDiv.clientWidth / height;
     const camera = new THREE.PerspectiveCamera(60, aspect, 0.001, 100);
-    camera.position.set(0, 0, 1.5);
+    camera.position.set(0, 1.5, 0);
+    camera.up.set(0, 0, 1); // Z-up
+    camera.lookAt(0, 0, 0);
     
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -808,7 +809,7 @@ function create3DPointCloudViewer(
     
     // Calculate center and scale, then offset the point cloud group
     // so the center of the points is at the pivot's origin
-    let initialCameraZ = 1.5;
+    let initialCameraDist = 1.5;
     let center = new THREE.Vector3();
     
     if (allPoints.length > 0) {
@@ -821,9 +822,9 @@ function create3DPointCloudViewer(
       // This means when we rotate the pivot, the points rotate around their own center
       pointCloudGroup.position.set(-center.x, -center.y, -center.z);
       
-      // Position camera to see the whole scene
-      initialCameraZ = maxDim * 1.5;
-      camera.position.z = initialCameraZ;
+      // Position camera to see the whole scene (on Y axis)
+      initialCameraDist = maxDim * 1.5;
+      camera.position.set(0, initialCameraDist, 0);
       
       // Add bounding box wireframe (also offset to be centered at origin)
       const boxHelper = new THREE.Box3Helper(
@@ -840,17 +841,24 @@ function create3DPointCloudViewer(
     const axesHelper = new THREE.AxesHelper(0.05);
     pivotGroup.add(axesHelper);
     
-    // Mouse controls - use persistent state
+    // Mouse controls - use persistent state with quaternion rotation
     let isDragging = false;
     let isShiftDown = false;
     let previousMousePosition = { x: 0, y: 0 };
     
-    // Initialize from persistent state (or defaults for first load)
-    let rotationX = viewer3DState.rotationX;
-    let rotationY = viewer3DState.rotationY;
+    // Initialize from persistent state
     let panX = viewer3DState.panX;
     let panY = viewer3DState.panY;
     let zoom = viewer3DState.zoom;
+    
+    // Initialize quaternion from persistent state
+    const currentQuaternion = new THREE.Quaternion(
+      viewer3DState.quaternion.x,
+      viewer3DState.quaternion.y,
+      viewer3DState.quaternion.z,
+      viewer3DState.quaternion.w
+    );
+    pivotGroup.quaternion.copy(currentQuaternion);
     
     viewerDiv.addEventListener('mousedown', (e) => {
       isDragging = true;
@@ -868,18 +876,42 @@ function create3DPointCloudViewer(
         // Pan
         panX += deltaX * 0.001 * zoom;
         panY -= deltaY * 0.001 * zoom;
+        viewer3DState.panX = panX;
+        viewer3DState.panY = panY;
       } else {
-        // Rotate
-        rotationY += deltaX * 0.01;
-        rotationX += deltaY * 0.01;
-        rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
+        // Trackball rotation using quaternions
+        // Get rotation axes from camera's perspective
+        const rotationSpeed = 0.005;
+        
+        // For horizontal drag: rotate around the camera's up vector (Z in world space initially)
+        // For vertical drag: rotate around the camera's right vector (X in world space initially)
+        // But we want these to be relative to the current view, not world space
+        
+        // Get camera's right and up vectors in world space
+        const cameraRight = new THREE.Vector3(1, 0, 0);
+        const cameraUp = new THREE.Vector3(0, 0, 1);
+        
+        // Create incremental rotation quaternions
+        // Horizontal drag rotates around the up axis (Z)
+        const horizontalRotation = new THREE.Quaternion();
+        horizontalRotation.setFromAxisAngle(cameraUp, -deltaX * rotationSpeed);
+        
+        // Vertical drag rotates around the right axis (X)
+        const verticalRotation = new THREE.Quaternion();
+        verticalRotation.setFromAxisAngle(cameraRight, -deltaY * rotationSpeed);
+        
+        // Apply rotations: new = horizontal * vertical * current
+        // Order matters: apply vertical first, then horizontal
+        currentQuaternion.premultiply(horizontalRotation);
+        currentQuaternion.premultiply(verticalRotation);
+        currentQuaternion.normalize();
+        
+        // Save to persistent state
+        viewer3DState.quaternion.x = currentQuaternion.x;
+        viewer3DState.quaternion.y = currentQuaternion.y;
+        viewer3DState.quaternion.z = currentQuaternion.z;
+        viewer3DState.quaternion.w = currentQuaternion.w;
       }
-      
-      // Save to persistent state
-      viewer3DState.rotationX = rotationX;
-      viewer3DState.rotationY = rotationY;
-      viewer3DState.panX = panX;
-      viewer3DState.panY = panY;
       
       previousMousePosition = { x: e.clientX, y: e.clientY };
     });
@@ -898,7 +930,6 @@ function create3DPointCloudViewer(
       e.preventDefault();
       zoom *= e.deltaY > 0 ? 1.1 : 0.9;
       zoom = Math.max(0.1, Math.min(10, zoom));
-      // Save to persistent state
       viewer3DState.zoom = zoom;
     }, { passive: false });
     
@@ -918,15 +949,14 @@ function create3DPointCloudViewer(
     function animate() {
       animationId = requestAnimationFrame(animate);
       
-      // Rotate the pivot group - this rotates everything around the center of the point clouds
-      pivotGroup.rotation.x = rotationX;
-      pivotGroup.rotation.y = rotationY;
+      // Apply quaternion rotation to pivot group
+      pivotGroup.quaternion.copy(currentQuaternion);
       
-      // Apply pan and zoom to camera
+      // Apply pan and zoom to camera (camera is on Y axis, so pan is in X and Z)
       camera.position.x = panX;
-      camera.position.y = panY;
-      camera.position.z = initialCameraZ * zoom;
-      camera.lookAt(0, 0, 0);
+      camera.position.y = initialCameraDist * zoom;
+      camera.position.z = panY;
+      camera.lookAt(panX, 0, panY);
       
       renderer.render(scene, camera);
     }
