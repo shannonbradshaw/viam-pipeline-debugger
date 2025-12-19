@@ -894,7 +894,7 @@ function create3DPointCloudViewer(
         // Create incremental rotation quaternions
         // Horizontal drag rotates around the up axis (Z)
         const horizontalRotation = new THREE.Quaternion();
-        horizontalRotation.setFromAxisAngle(cameraUp, -deltaX * rotationSpeed);
+        horizontalRotation.setFromAxisAngle(cameraUp, deltaX * rotationSpeed);
         
         // Vertical drag rotates around the right axis (X)
         const verticalRotation = new THREE.Quaternion();
