@@ -1029,14 +1029,18 @@ class WineRobotDebugger {
     if (!this.machine) throw new Error('Not connected');
     const vision = new VIAM.VisionClient(this.machine, visionName);
     const detections = await vision.getDetectionsFromCamera(cameraName);
-    return detections.map(d => ({
-      className: d.className ?? 'unknown',
-      confidence: d.confidence ?? 0,
-      xMin: d.xMin ?? 0,
-      yMin: d.yMin ?? 0,
-      xMax: d.xMax ?? 0,
-      yMax: d.yMax ?? 0,
-    }));
+    console.log(`  [${visionName}] Got ${detections.length} detections from ${cameraName}`);
+    return detections.map(d => {
+      console.log(`    Detection: ${d.className} ${((d.confidence ?? 0) * 100).toFixed(1)}% at (${d.xMin},${d.yMin})-(${d.xMax},${d.yMax})`);
+      return {
+        className: d.className ?? 'unknown',
+        confidence: d.confidence ?? 0,
+        xMin: d.xMin ?? 0,
+        yMin: d.yMin ?? 0,
+        xMax: d.xMax ?? 0,
+        yMax: d.yMax ?? 0,
+      };
+    });
   }
   
   async getCameraIntrinsics(cameraName: string): Promise<CameraIntrinsics | null> {
@@ -1194,6 +1198,14 @@ class WineRobotDebugger {
         }
       } else if (stage.type === 'vision' && stage.sourceCamera) {
         result.detections = await this.getDetections(stage.name, stage.sourceCamera);
+        
+        // Also fetch source camera image for visualization with bounding boxes
+        try {
+          result.image = await this.getCameraImage(stage.sourceCamera);
+        } catch (e) {
+          console.log(`  [${stage.name}] Could not get source image:`, e);
+        }
+        
         result.success = true;
       } else if (stage.type === 'vision-3d' && stage.sourceCamera) {
         const { objects, combinedPointCloud } = await this.getObjectPointClouds(stage.name, stage.sourceCamera);
@@ -1340,8 +1352,8 @@ function createUI(): void {
       .latency { color: var(--accent); }
       .stage-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
       .stage-content { margin-top: 10px; }
-      .stage-content canvas { width: 100%; max-height: 200px; background: #000; border-radius: 4px; }
-      .stage-content img { width: 100%; max-height: 200px; object-fit: contain; background: #000; border-radius: 4px; }
+      .stage-content canvas { max-width: 100%; max-height: 200px; background: #000; border-radius: 4px; display: block; }
+      .stage-content img { max-width: 100%; max-height: 200px; object-fit: contain; background: #000; border-radius: 4px; }
       .detections { font-family: monospace; font-size: 12px; }
       .detection { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,212,170,0.1); border-radius: 3px; margin-bottom: 4px; }
       .error-msg { color: var(--error); font-size: 12px; padding: 8px; background: rgba(239,68,68,0.1); border-radius: 4px; }
@@ -1478,47 +1490,76 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
     const url = URL.createObjectURL(blob);
     contentEl.innerHTML = `<img src="${url}" alt="${result.stageName}">`;
     
-    // Draw detections if present
-    if (result.detections && result.detections.length > 0) {
-      const img = contentEl.querySelector('img')!;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0);
+    const img = contentEl.querySelector('img')!;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      
+      console.log(`  [${result.stageName}] Rendering image ${canvas.width}x${canvas.height}, detections: ${result.detections?.length ?? 'none'}`);
+      
+      // Draw detections if present
+      if (result.detections && result.detections.length > 0) {
+        ctx.lineWidth = 3;
+        ctx.font = 'bold 14px monospace';
         
-        ctx.lineWidth = 2;
-        ctx.font = '14px monospace';
+        // Use safe hues that avoid RGB (axis colors)
+        const safeHues = [30, 60, 180, 270, 300, 330, 45, 160, 200, 280];
         
-        result.detections!.forEach((d, i) => {
-          const hue = (i * 137.5) % 360;
+        result.detections.forEach((d, i) => {
+          const hue = safeHues[i % safeHues.length];
+          console.log(`    Drawing bbox at (${d.xMin},${d.yMin})-(${d.xMax},${d.yMax})`);
           ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
           ctx.strokeRect(d.xMin, d.yMin, d.xMax - d.xMin, d.yMax - d.yMin);
           
           const label = `${d.className} ${(d.confidence * 100).toFixed(0)}%`;
           const tw = ctx.measureText(label).width;
-          ctx.fillStyle = `hsla(${hue}, 80%, 20%, 0.8)`;
-          ctx.fillRect(d.xMin, d.yMin - 20, tw + 8, 20);
+          ctx.fillStyle = `hsla(${hue}, 70%, 15%, 0.9)`;
+          ctx.fillRect(d.xMin, d.yMin - 22, tw + 10, 22);
           ctx.fillStyle = '#fff';
-          ctx.fillText(label, d.xMin + 4, d.yMin - 5);
+          ctx.fillText(label, d.xMin + 5, d.yMin - 6);
         });
+      }
+      
+      contentEl.innerHTML = '';
+      canvas.style.cssText = 'max-width:100%;max-height:200px;background:#000;border-radius:4px;display:block;';
+      contentEl.appendChild(canvas);
+      
+      // Add detection summary below image
+      if (result.detections) {
+        const detDiv = document.createElement('div');
+        detDiv.style.cssText = 'margin-top:8px;font-size:11px;';
         
-        contentEl.innerHTML = '';
-        canvas.style.cssText = 'width:100%;max-height:200px;background:#000;border-radius:4px;';
-        contentEl.appendChild(canvas);
-        
-        // Add point cloud stats below if available
-        if (result.pointCloud?.stats) {
-          appendPointCloudStats(contentEl, result.pointCloud);
+        if (result.detections.length > 0) {
+          const safeHues = [30, 60, 180, 270, 300, 330, 45, 160, 200, 280];
+          detDiv.innerHTML = `
+            <div class="detections">
+              ${result.detections.map((d, i) => {
+                const hue = safeHues[i % safeHues.length];
+                return `
+                  <div class="detection" style="border-left:3px solid hsl(${hue}, 80%, 50%);padding-left:8px;">
+                    <span>${d.className}</span>
+                    <span>${(d.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        } else {
+          detDiv.innerHTML = `<div style="color:var(--warning);text-align:center;">No detections</div>`;
         }
-      };
-    } else {
-      // No detections - add point cloud stats if available
+        contentEl.appendChild(detDiv);
+      }
+      
+      // Add point cloud stats below if available
       if (result.pointCloud?.stats) {
         appendPointCloudStats(contentEl, result.pointCloud);
       }
-    }
+      
+      URL.revokeObjectURL(url);
+    };
   } else if (result.pointCloud) {
     const pc = result.pointCloud;
     const stats = pc.stats;
