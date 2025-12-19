@@ -1555,16 +1555,8 @@ function updateStageUI(pipelineId: string, result: StageResult): void {
         
         result.detections.forEach((d, i) => {
           const hue = safeHues[i % safeHues.length];
-          console.log(`    Drawing bbox at (${d.xMin},${d.yMin})-(${d.xMax},${d.yMax})`);
           ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
           ctx.strokeRect(d.xMin, d.yMin, d.xMax - d.xMin, d.yMax - d.yMin);
-          
-          const label = `${d.className} ${(d.confidence * 100).toFixed(0)}%`;
-          const tw = ctx.measureText(label).width;
-          ctx.fillStyle = `hsla(${hue}, 70%, 15%, 0.9)`;
-          ctx.fillRect(d.xMin, d.yMin - 22, tw + 10, 22);
-          ctx.fillStyle = '#fff';
-          ctx.fillText(label, d.xMin + 5, d.yMin - 6);
         });
       }
       
